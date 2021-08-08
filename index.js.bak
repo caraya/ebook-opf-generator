@@ -1,0 +1,142 @@
+import fs, { stat, readdir, writeFileSync } from 'fs';
+import path from 'path';
+import { cwd } from 'process';
+
+import { create, fragment } from 'xmlbuilder2';
+import { v4 as uuidv4 } from 'uuid';
+import * as yaml from 'js-yaml';
+import mime from 'mime-types';
+import * as _ from 'lodash';
+
+// Define constants for namespaces
+const dc = 'http://purl.org/dc/elements/1.1/';
+const idpf = 'http://www.idpf.org/2007/opf';
+// Do we want to use uuid for this?
+const bookid = uuidv4();
+// Capture the metadata in a variable
+let data = readMetadata();
+// Capture the creators array
+let creators = Array.from(data.creators);
+// Empty Array for Manifest items that we'll
+// populate later
+let manifestItems = [];
+// Create the manifestItems array
+let manifest = readDirContent();
+
+/**
+ * Reads the metadata from metadata.yaml
+ *
+ * @returns {object}
+ */
+function readMetadata() {
+  try {
+    let fileContents = fs.readFileSync('metadata.yaml', 'utf8');
+    let data = yaml.load(fileContents);
+
+    // console.log(data);
+    return data;
+  } catch (e) {
+    console.log(e);
+  }
+}
+
+
+/**
+ * Walks the content directory and creates an array of information abou the files. 
+ * Right now it does not work on child directories. Working on converting this to a recuursive traversal
+ *
+ * @param {string} [dir='./OEBPS'] directory to walk, defaults to OEBPS in the directory where you run the script
+ * @returns {array}
+ */
+function readDirContent(dir = './OEBPS') {
+  fs.readdir(dir, (err, files) => {
+    if (err)
+      console.log(err);
+    else {
+      files.forEach((file, stats) => {
+        let filePath = path.join(dir, file);
+        fs.stat(filePath, (err, stats) => {
+          if (err) {
+            console.error(err)
+            return
+          } else {
+            if (mime.lookup(file) === false) {
+              return
+            }
+
+            if (stats.isDirectory()) {
+              // If it's a directory, call this function again cuz we want to walk the directory
+              // It currently does not walking child directories
+              readDirContent(`${cwd()}/${filePath}`);
+            } else {
+              // Create parent array
+              let valuesToPush = {};
+              // Create item array
+              let item = {}
+              // Add the item array to the parent
+              valuesToPush.item = item;
+              // Insert attributes to the item array
+              item['@id'] = file;
+              item['@href'] = filePath;
+              item['@media-type'] = mime.lookup(file);
+
+              manifestItems = _.clonedeep(valuesToPush);
+            }
+          }
+        })
+      })
+      // let itemsFrag = fragment(manifestItems);
+      // console.log(itemsFrag, { pretty: true });
+    }
+    return manifestItems;
+  })
+}
+
+let root = create({ version: '1.0' })
+  // definess the root element
+  .ele(idpf, 'package')
+  // Defines namespaces
+  .att('http://www.w3.org/2000/xmlns/', 'xmlns:dc', dc)
+  // Defines version attribute for the root element
+  .att('version', '2.0')
+  // Defines a unique udentifier generated with UUID
+  .att('unique-identifier', bookid)
+  // Begin metadata block
+  .ele('metadata')
+    .ele('meta')
+      .att('content', 'cover-image')
+      .att('name', 'cover')
+    .up()
+    .ele(dc, 'identifier')
+      .att('id', 'bookid')
+      .txt('urn:uuid:' + bookid)
+    .up()
+    .ele(dc, "title")
+      .txt( `${data.title}`)
+    .up()
+    // Had hardcode the DC namespace to the creator elelement 
+    // so I could automate creating any number of creators
+    .ele({
+      "dc:creator": creators
+    })
+    .up()
+    .ele(dc, "published")
+      .txt(`${data.date}`)
+    .up()
+    .ele(dc, "publisher")
+      .txt(`${data.publisher}`)
+    .up()
+  .up() // Ends metadata block
+  // Begin manifest block
+  .ele('manifest')
+  .up() // Ends manifest block
+  // Begin spine block
+  .ele('spine')
+  .up() // Ends spine block
+.up(); // ends root element
+// convert the XML tree to string
+const xml = root.end({ prettyPrint: true });
+console.log(xml);
+
+// // write the result to a file in utf8
+// fs.writeFileSync('content.opf', xml, 'utf8');
