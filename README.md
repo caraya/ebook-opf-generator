@@ -6,9 +6,10 @@ AN attempt to automate the generation of an EPUB3 opf package file.
 
 1. Install Dependencies
    * `npm install`
-2. Copy your project's OEBPS folder to the root of the project
-3. Set the project environment
+2. Copy your books's OEBPS folder to the root of the project
+3. Edit the `metadata.yml` file with the information about your book
+4. Set the project environment
    * `export NODE_ENV=production` or
    * `export NODE_ENV=development`
-4. Run the generator
+5. Run the generator
    * node index.mjs
